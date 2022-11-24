@@ -1,0 +1,492 @@
+---
+title: "How GDP and Internet access rate affect years of schooling and learning outcome"
+author: "Changlong Wan, Lixia Li, Nadsupa Chanachu, Ruiqi Huang & Shuhan Wang"
+output:
+  pdf_document: default
+  word_document: default
+number_sections: yes
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, comment = NA, message = FALSE, warning = FALSE)
+```
+
+```{r packages}
+library(kableExtra)
+library(gridExtra)
+library(tinytex)
+library(equatiomatic)
+library(gapminder)
+library(ggplot2)
+library(dplyr)
+library(moderndive)
+library(ISLR)
+library(skimr)
+library(plotly)
+library(tidyr)
+library(jtools)
+library(janitor)
+library(infer)
+library(broom)
+
+```  
+
+
+```{r}
+#read the data
+internet<-read.csv("Group_15_Data_1.csv")
+education<-read.csv("Group_15_Data_2.csv")
+grade<-read.csv("Group_15_Data_3.csv")
+
+data_joined <- internet %>% 
+  inner_join(education, by =c("Year","Code","Entity") ) %>% #merge the first dataset
+  inner_join(grade, by =c("Year","Code","Entity") ) %>% ##merge the second dataset
+  filter(Year==2005) %>% #choice of data
+  rename(population=Population..historical.estimates.) %>% #Make the name more concise
+  rename(learning_outcome=Average.harmonised.learning.outcome.score..Altinok..Angrist..and.Patrinos..2018...) %>%  #Make the name more concise
+  rename(internet_access=Individuals.using.the.Internet....of.population.) %>% #Make the name more concise
+  rename(schooling_year=Average.Total.Years.of.Schooling.for.Adult.Population..Lee.Lee..2016...Barro.Lee..2018..and.UNDP..2018..) %>% #Make the name more concise
+  select(-X145446.annotations,-Continent,-population) %>% #remove irrelevant data
+  na.omit() #remove NA data
+```
+
+
+# Introduction {#sec:intro}
+With the development of society, the economic and technological level is becoming more and more developed, which is highlighted in the change of GDP and the utilization rate of the Internet. At the same time, it is bound to promote the progress of the education industry.  
+
+Therefore, there seems to be an underlying relationship between Internet access representing technology adoption, GDP representing economic level, years of schooling and learning outcomes representing education.  
+
+Through doing statistics on countries around the world, we will explore this issue in this report. 
+
+## Data Description {#sec:desc}
+The data used for analysis included a sample of `r nrow(data_joined)` countries in the world, which consist of different countries name (Entity) and their code, and consist of each country's share of population with internet access (internet_access), mean years of schooling (schooling_year), average test scores (learning_outcome) and GDP per capita (GDP.per.capita).  
+
+This data is a combination of three datasets, which use Entity, Code and Year as key variables. The source of these three dataset are: https://ourworldindata.org/grapher/share-of-individuals-using-the-internet, https://ourworldindata.org/grapher/mean-years-of-schooling and https://ourworldindata.org/grapher/learning-outcomes-vs-gdp-per-capita respectively. The observations with missing value will be excluded from analysis. And, because of the concern to study as recent data as possible, we chose the data of Year 2005 with a relatively larger sample size as the research target.
+
+Table \ref{tab:summaryskim} illustrates five-number summary and IQR on interested variables of `r nrow(data_joined)` countries. From the table, we can find that the data range, the average value and standard deviation clearly.  
+
+It should be noted that the scale of GDP is quite different from other variables, so subsequent analysis may require data transformation. Hence we take a logarithm transformation of GDP.per.capita and derive a new variable called "log.GDP.per.capita" which will be used in following analysis.
+
+```{r}
+dataset<-data_joined %>%
+  mutate(log.GDP.per.capita=log(GDP.per.capita))%>% #logarithm transformation to remove scale 
+  select(internet_access,schooling_year,learning_outcome,log.GDP.per.capita)
+
+```
+
+
+```{r summaries_skim}
+#Generate numerical summaries
+my_skim <- skim_with(base = sfl(n = length))
+dataset %>%
+  select(internet_access,schooling_year,learning_outcome,log.GDP.per.capita) %>%
+  my_skim() %>%
+#transmute() is similar as mutate().
+  transmute(Variable=skim_variable, n=n, Mean=numeric.mean, SD=numeric.sd,
+            Min=numeric.p0, Median=numeric.p50,  Max=numeric.p100, 
+            IQR = numeric.p75-numeric.p50) %>%
+   kable(caption = '\\label{tab:summaryskim} Summary statistics of interested variables.',
+         booktabs = TRUE, linesep = "", digits = 2) %>%
+  #linesep="" turns off the default 5 rows + a space setting.  
+   kable_styling(font_size = 10, latex_options = "hold_position")
+```
+
+We can also use visualizations to get a sense of the data. Figure \ref{fig:box} shows the dispersion of the each variable.
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box} Boxplots for interested variables.", fig.pos = "H"}
+#Boxplot of data
+p17<-ggplot(dataset,mapping = aes(y=internet_access))+
+  geom_boxplot(fill="skyblue") +
+  labs( y = "Internet access proportion(%)",
+       title = "Internet access proportion in 2005") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+p18<-ggplot(dataset,mapping = aes(y=schooling_year))+
+  geom_boxplot(fill="skyblue") +
+  labs( y = "Mean years of schooling",
+       title = "Years of schooling in 2005")+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+p19<-ggplot(dataset,mapping = aes(y=learning_outcome))+
+  geom_boxplot(fill="skyblue") +
+  labs( y = "Average student test scores",
+       title = "Learning outcomes in 2005")+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+p20<-ggplot(dataset,mapping = aes(y=log.GDP.per.capita))+
+  geom_boxplot(fill="skyblue") +
+  labs( y = "log.GDP per capita ($)",
+       title = "log.GDP per capita in 2005")+
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+grid.arrange(p17, p18, p19, p20, ncol=2)
+
+```
+
+## Research Questions {#sec:research}
+
+Combined with the objectives stated in the introduction part of the report and data summary stated in the data description part, we set two research questions as below:
+
+* Explore how GDP and Internet access rate affect on years of schooling
+* Explore how GDP and Internet access rate affect on learning outcome
+
+# Exploratory data analysis  
+
+Figure \ref{fig:scatter} visualizes the relationship. The above two plots is about internet access rate and GDP per capita against years of schooling respectively. And the rest two plot is about internet access rate and GDP per capita against learning outcoms. And all four figures present a positive relationship between them.  
+
+Through the plots and correlation coefficients in Table \ref{tab:correlation}, we can draw a conclusion that: There exists strong positive correlations between each pair of varibales.  
+
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:scatter} scatterplots between variables", fig.pos = "H"}
+#scatterplot to explore relationship
+p13<-ggplot(dataset,mapping = aes(x=internet_access,y=schooling_year))+
+  geom_point() 
+
+p14<-ggplot(dataset,mapping = aes(x=log.GDP.per.capita, y=schooling_year))+
+  geom_point()
+
+p15<-ggplot(dataset,mapping = aes(x=internet_access,y=learning_outcome))+
+  geom_point() 
+
+p16<-ggplot(dataset,mapping = aes(x=log.GDP.per.capita,y=learning_outcome))+
+  geom_point() 
+
+grid.arrange(p13, p14, p15, p16, ncol=2)
+
+```
+
+```{r}
+table1<-dataset %>%
+  cor()
+
+knitr::kable(head(table1), "pipe",caption = '\\label{tab:correlation} Correlation betwween learning_outcome, schooling_year, log.GDP.per.capita and internet_access') %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+And this relationship can be seen more intuitively after we add the regression line in Figure \ref{fig:scatter} in the next analysis.
+
+
+## Exploratory analysis on Model 1  
+
+
+```{r,fig.height=3,fig.width=6,out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:smooth1} year of schooling against internet access and log.GDP.per.capita.", fig.pos = "H"}
+#Add regression line
+plot1=ggplot(dataset, aes(x = log.GDP.per.capita, y = schooling_year)) +
+  geom_point() +
+  labs(x = "log.GDP.per.capita", y = "schooling_year") +
+  geom_smooth(method = "lm", se = FALSE)
+
+plot2=ggplot(dataset, aes(x = internet_access, y = learning_outcome)) +
+  geom_point() +
+  labs(x = "internet_access", y = "schooling_year") +
+  geom_smooth(method = "lm", se = FALSE)
+
+grid.arrange(plot1, plot2, ncol=2)
+```
+
+
+## Exploratory analysis on Model 2
+
+
+```{r,fig.height=3,fig.width=6,out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:smooth2} learning outcome against internet access and log.GDP.per.capita.", fig.pos = "H"}
+plot3=ggplot(dataset, aes(x = log.GDP.per.capita, y = learning_outcome)) +
+  geom_point() +
+  labs(x = "log.GDP.per.capita", y = "learning_outcome") +
+  geom_smooth(method = "lm", se = FALSE)
+
+plot4=ggplot(dataset, aes(x = internet_access, y = learning_outcome)) +
+  geom_point() +
+  labs(x = "internet_access", y = "learning_outcome") +
+  geom_smooth(method = "lm", se = FALSE)
+
+grid.arrange(plot3, plot4, ncol=2)
+```
+
+
+
+# Formal data analysis
+
+
+```{r model 1}
+####### This is the begin of the analysis of model 1 #######
+```  
+
+
+## Model 1  
+The GDP per capita and internet access might be two possible parameters which affect the number of schooling years of the adults.
+Therefore, the multiple linear regression model that will be fitted to the data is as follows:
+```{r fit modle 1}
+## Schooling_year ~ GDP + internet ##
+scooling_year.model <- lm(schooling_year ~ log.GDP.per.capita + internet_access, data = dataset)
+
+equatiomatic::extract_eq(scooling_year.model)
+#This function can automatically transform the model to mathematical equation
+```
+
+Table \ref{tab:model1}  displays the estimated intercept and slope parameters of the best-fitting line from the multiple regression model 1, it also shows the 95% confidence interval and the p-value of the parameters.  
+
+Hence, the best-fitting line is given as:
+```{r fit result 1}
+equatiomatic::extract_eq(scooling_year.model,use_coefs = TRUE)
+```
+
+That is, the increase in internet_access and log.GDP.per.capita will contributes to an associated increase in scooling_year.  
+
+
+Therefore, the relationship between scooling_year, internet_access & log.GDP.per.capita is positive.  
+
+
+```{r fit table 1}
+table2<-get_regression_table(scooling_year.model)
+
+table2 %>%
+  dplyr::select(term,estimate, lower_ci, upper_ci, p_value) %>%
+  kable(caption = '\\label{tab:model1} Estimates of the parameters from the fitted   linear regression model 1.',col.names = c("Term", "Estimate", "CI Lower Bound",   "CI Upper Bound", "p value"),align=rep('c', 5)) %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+### Assessing model1 fit
+
+```{r, echo = FALSE, eval = TRUE, warning = FALSE, message = FALSE}
+regression.points <- get_regression_points(scooling_year.model)
+```
+
+We can assess our first two model assumptions by producing scatterplots of our residuals against each of our explanatory variables. Firstly, we begin with the scatterplot of the residuals against log.GDP.per.capita. It can be seen that the mean is zero and the variance is not very volatile. The assumptions of the residuals having mean zero and constant variability across all values of the explanatory variable appear approximately to be valid in this case. Secondly, we look at the scatterplot of the residuals against internet_access. We can see that the mean is zero and the volatility of the variance is gradually getting smaller. The first two model assumptions appear approximately to hold from the scatterplot of the residuals against internet_access. Thirdly, the residuals against the fitted values can be plot. From this figure, people can infer that the assumptions of the residuals having mean zero and constant variability across all levels of the fitted values hold. Finally, we plot histograms of the residuals to assess whether they are normally distributed with mean zero. The residuals appear to be normally distributed and centred at zero.
+
+
+```{r, echo = FALSE,fig.height=4,fig.width=7}
+# scatterplot of the residuals against log.GDP.per.capita:
+plot5=ggplot(regression.points, aes(x = log.GDP.per.capita, y = residual)) +
+  geom_point() +
+  labs(x = "log.GDP.per.capita", y = "Residual", title = "Residuals vs log.GDP.per.capita")  +
+  geom_hline(yintercept = 0, col = "blue", size = 1)
+```
+
+
+```{r, echo = FALSE,fig.height=4,fig.width=7}
+# scatterplot of the residuals against internet_access:
+plot6=ggplot(regression.points, aes(x = internet_access, y = residual)) +
+  geom_point() +
+  labs(x = "internet_access", y = "Residual", title = "Residuals vs internet_access") +
+  geom_hline(yintercept = 0, col = "blue", size = 1)
+```
+
+
+```{r,echo=FALSE,fig.height=4,fig.width=7}
+plot7=ggplot(regression.points, aes(x = schooling_year_hat, y = residual)) +
+  geom_point() +
+  labs(x = "Fitted values", y = "Residual", title = "Residuals vs Fitted values") +
+  geom_hline(yintercept = 0, col = "blue", size = 1)
+```
+
+
+```{r,echo=FALSE,fig.height=4,fig.width=7}
+# check if the residuals are normally distributed:
+plot8=ggplot(regression.points, aes(x = residual)) +
+  geom_histogram(color = "white") +
+  labs(x = "Residual")
+```
+
+
+```{r,echo=FALSE}
+grid.arrange(plot5, plot6,plot7,plot8, ncol=2)
+```
+
+
+
+### Confidence Intervals for the parameters 
+
+```{r,echo=FALSE}
+model1 <- lm(schooling_year ~ log.GDP.per.capita + internet_access, data = dataset)
+
+table4<-get_regression_table(model1)
+
+table4 %>%
+  kable(caption = '\\label{tab:model1}  Confidence Intervals for the parameters in model 1.',align=rep('c', 5)) %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+From the Table 4, the confidence intervals of the log.GDP.per.capita and internet_access are (0.745,1.773) and (0.018,0.063). 
+
+### Inference using Confidence Intervals
+Since 0 does not lie within the confidence interval of log.GDP.per.capita and and internet_access, then we conclude that there is evidence of a linear relationship between the response variable and the explanatory variables.
+
+### Variable selection using confidence intervals
+
+The 95% CIs for the parameters in the model does not contain zero in Table 4, therefore we conclude that log.GDP.per.capita and internet_access contribute significantly to the model and thus include them from the model. 
+
+
+### Model comparisons using objective criteria
+
+```{r,echo=FALSE}
+
+model1 <- glance(lm(schooling_year ~ log.GDP.per.capita + internet_access, data = dataset))
+
+model2 <- glance(lm(schooling_year ~ internet_access, data = dataset))
+
+model3 <- glance(lm(schooling_year ~ log.GDP.per.capita, data = dataset))
+
+Models <- c('MLR', 'SLR(internet)','SLR(GDP)')
+bind_rows(model1,model2,model3,.id="Model") %>%
+select(Model,adj.r.squared,AIC,BIC) %>%
+mutate(Model=Models)%>%
+kable(
+digits = 2,
+caption = "Model comparison values for different models"
+) %>%
+ kable_styling(latex_options = 'HOLD_position', )
+
+```
+The MLR model has the highest R2 adj value and the lowest AIC & BIC values. This result is the same as the inference using confidence intervals. We should contain log.GDP.per.capita and internet_access in the model.
+
+## Conclusions
+
+The data of the years of total schooling across all education levels suggests that there may be potential relationships with GDP per capita and Internet users. This is observed from the fitted regression model 1. The schooling_year was found to increase with increasing GDP per capita. The relationship observed is strong positive (correlation coefficient of 0.7371427), with an associated increase in schooling_year of, on average, 1.259, when GDP per capita is multiplied by e. The schooling_year was found to increase with increasing internet access users. The relationship observed is also strong positive (correlation coefficient of 0.7096787), with an associated increase in schooling_year of, on average, 0.04, with every one unit increase in internet_access. We can see that the confidence interval for the parameters of log.GDP.per.capita and internet_access does not contains 0, implying that there is evidence of a linear relationship between the response variable and the explanatory variables. Based on the objective criteria (minimize AIC and BIC and maximize R2 adj), we choose the multiple linear regression model which contains log.GDP.per.capita and internet_access.
+
+
+
+```{r model 2}
+####### This is the begin of the analysis of model 2 #######
+```  
+## Model 2  
+
+The GDP per capita and internet access might also contributes to the learning outcome.  
+Therefore, the multiple linear regression model that will be fitted to the data is as follows:
+
+```{r fit modle 2}
+Learn_outcome.model <- lm(learning_outcome ~ log.GDP.per.capita + internet_access, data = dataset)
+
+equatiomatic::extract_eq(Learn_outcome.model)
+#This function can automatically transform the model to mathematical equation
+
+```
+Table \ref{tab:model2}  displays the estimated intercept and slope parameters of the best-fitting line from the multiple regression model 2, it also shows the 95% confidence interval and the p-value of the parameters.  
+
+Hence, the best-fitting line is given as:
+```{r fit result 2}
+equatiomatic::extract_eq(Learn_outcome.model,use_coefs = TRUE)
+```
+The fitted model shows the increase in internet_access and log.GDP.per.capita will contributes to an associated increase in the response variable learning_outcome.  
+Therefore, the relationship between learning_outcome, internet_access & log.GDP.per.capita is positive.  
+
+```{r fit table 2}
+table6<-get_regression_table(Learn_outcome.model)
+
+table6 %>%
+  dplyr::select(term,estimate, lower_ci, upper_ci, p_value) %>%
+  kable(caption = '\\label{tab:model2} Estimates of the parameters from the fitted   linear regression model 2.',col.names = c("Term", "Estimate", "CI Lower Bound",   "CI Upper Bound", "p value"),align=rep('c', 5)) %>%
+  kable_styling(latex_options = 'HOLD_position', )
+
+```
+
+
+### Assessing model2 fit
+
+```{r, echo = FALSE, eval = TRUE, warning = FALSE, message = FALSE}
+regression.points2 <- get_regression_points(Learn_outcome.model)
+```
+
+We can assess our first two model assumptions by producing scatterplots of our residuals against each of our explanatory variables. Firstly, we begin with the scatterplot of the residuals against log.GDP.per.capita. It can be seen that the mean is zero and the variance is not very volatile. The assumptions of the residuals having mean zero and constant variability across all values of the explanatory variable appear approximately to be valid in this case. Secondly, we look at the scatterplot of the residuals against internet_access. We can see that the mean is zero and the volatility of the variance is gradually getting smaller. The first two model assumptions appear approximately to hold from the scatterplot of the residuals against internet_access. Thirdly, the residuals against the fitted values can be plot. From this figure, people can infer that the assumptions of the residuals having mean zero and constant variability across all levels of the fitted values hold. Finally, we plot histograms of the residuals to assess whether they are normally distributed with mean zero. The residuals appear to be normally distributed and centred at zero.
+
+
+```{r, echo = FALSE,fig.height=4,fig.width=7}
+# scatterplot of the residuals against log.GDP.per.capita:
+plot9=ggplot(regression.points2, aes(x = log.GDP.per.capita, y = residual)) +
+  geom_point() +
+  labs(x = "log.GDP.per.capita", y = "Residual", title = "Residuals vs log.GDP.per.capita")  +
+  geom_hline(yintercept = 0, col = "blue", size = 1)
+```
+
+
+```{r, echo = FALSE,fig.height=4,fig.width=7}
+# scatterplot of the residuals against internet_access:
+plot10=ggplot(regression.points2, aes(x = internet_access, y = residual)) +
+  geom_point() +
+  labs(x = "internet_access", y = "Residual", title = "Residuals vs internet_access") +
+  geom_hline(yintercept = 0, col = "blue", size = 1)
+```
+
+
+```{r,echo=FALSE,fig.height=4,fig.width=7}
+plot11=ggplot(regression.points2, aes(x = learning_outcome_hat, y = residual)) +
+  geom_point() +
+  labs(x = "Fitted values", y = "Residual", title = "Residuals vs Fitted values") +
+  geom_hline(yintercept = 0, col = "blue", size = 1)
+```
+
+
+```{r,echo=FALSE,fig.height=4,fig.width=7}
+# check if the residuals are normally distributed:
+plot12=ggplot(regression.points2, aes(x = residual)) +
+  geom_histogram(color = "white") +
+  labs(x = "Residual")
+```
+
+```{r,echo=FALSE}
+grid.arrange(plot9, plot10,plot11,plot12, ncol=2)
+```
+
+
+
+### Confidence Intervals for the parameters 
+
+```{r,echo=FALSE}
+model4 <- lm(learning_outcome ~ log.GDP.per.capita + internet_access, data = dataset)
+
+table7<-get_regression_table(model4)
+
+table7 %>%
+  kable(caption = '\\label{tab:model4}  Confidence Intervals for the parameters in model 2..',align=rep('c', 5)) %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+From the Table 7, the confidence intervals of the log.GDP.per.capita and internet_access are (9.633,37.302) and (1.196,2.397). 
+
+### Inference using Confidence Intervals
+
+Since 0 does not lie within the confidence interval of log.GDP.per.capita and and internet_access, then we
+conclude that there is evidence of a linear relationship between the response variable and the explanatory
+variables.
+
+### Variable selection using confidence intervals
+
+The 95% CIs for the parameters in the model does not contain zero in Table 7, therefore we conclude that
+log.GDP.per.capita and internet_access contribute significantly to the model and thus include them from the
+model. 
+
+### Model comparisons using objective criteria
+
+```{r,echo=FALSE}
+
+model4 <- glance(lm(learning_outcome ~ log.GDP.per.capita + internet_access, data = dataset))
+
+model5 <- glance(lm(learning_outcome ~ internet_access, data = dataset))
+
+model6 <- glance(lm(learning_outcome ~ log.GDP.per.capita, data = dataset))
+
+Models <- c('MLR','SLR(internet_access)','SLR(log.GDP.per.capita)')
+bind_rows(model4,model5,model6,.id="Model") %>%
+select(Model,adj.r.squared,AIC,BIC) %>%
+mutate(Model=Models)%>%
+kable(
+digits = 2,
+caption = "Model comparison values for different models"
+) %>%
+ kable_styling(latex_options = 'HOLD_position', )
+
+```
+
+The MLR model has the highest R2 adj value and the lowest AIC & BIC values. This result is the same as the inference using confidence intervals. We need the log.GDP.per.capita and internet_access in the model.
+
+
+## Conclusions
+
+The data of the years of learning outcomes suggests that there may be potential relationships with GDP per capita and Internet users. This is observed from the fitted regression model 2. The learning_outcome was found to increase with increasing GDP per capita. The relationship observed is strong positive (correlation coefficient of 0.7227964), with an associated increase in learning_outcome of, on average, 23.468, when GDP per capita is multiplied by e. The learning_outcome was found to increase with increasing internet access users. The relationship observed is also strong positive (correlation coefficient of 0.7752196), with an associated increase in learning_outcome of, on average, 1.796, with every one unit increase in internet_access. We can see that the confidence interval for the parameters of log.GDP.per.capita and internet_access does not contains 0, implying that there is evidence of a linear relationship between the response variable and the explanatory variables. Based on the objective criteria (minimize AIC and BIC and maximize R2 adj), we choose the multiple linear regression model which contains log.GDP.per.capita and internet_access.
+
+
+
+
+
+
+
+
+
+
