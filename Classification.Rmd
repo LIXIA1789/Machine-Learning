@@ -1,0 +1,148 @@
+---
+title: "Classification"
+author: "Lixia"
+date: '2022-11-23'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The Stock Market Data
+
+```{r}
+# The Stock Market Data
+library(ISLR)
+summary(Smarket)
+head(Smarket$Direction,10)
+?Smarket
+cor(Smarket,-9)
+cor(Smarket[,-9])
+attach(Smarket)
+plot(Volume)
+```
+
+```{r}
+# Logistic Regression
+glm.fits=glm(Direction~Lag1+Lag2+Lag3+Lag4+Lag5+Volume, data=Smarket, family=binomial)
+glm.fits$coefficients
+glm.probs=predict(glm.fits,type="response")
+head(glm.probs)
+glm.pred=rep("Down",1250)
+head(glm.pred,10)
+glm.pred[glm.probs>0.5]="Up"
+head(glm.pred)
+Direction[1:6]
+table(glm.pred,Direction)
+length(Direction)
+1-0.5216
+glm.pred==Direction
+mean(glm.pred==Direction)
+table(glm.pred,Direction)
+```
+
+```{r}
+# Divide the data into test set and training set
+attach(Smarket)
+train=(Year <2005)
+head(train)
+tail(train)
+Smarket.2005=Smarket[!train,]
+dim(Smarket.2005)
+Direction.2005=Direction[!train]
+Smarket.0104=Smarket[train,]
+```
+
+```{r}
+# Linear Discriminant Analysis
+library(MASS)
+lda.fit=lda(Direction~Lag1+Lag2, data=Smarket.0104)
+lda.fit
+lda.pred=predict(lda.fit , Smarket.2005)
+lda.pred
+lda.class=lda.pred$class
+head(lda.class)
+tail(lda.class)
+table(lda.class ,Direction.2005)
+mean(lda.class==Direction.2005)
+```
+
+```{r}
+# Logistic Regression
+logit.fit=glm(Direction~Lag1+Lag2, data=Smarket.0104,family=binomial)
+logit.prob=predict(logit.fit,Smarket.2005,type="response")
+logit.pred=rep("Down",252)
+logit.pred[logit.prob>0.5]="up"
+table(logit.pred,Direction.2005)
+mean(logit.pred==Direction.2005)
+```
+
+```{r}
+# Quadratic Discriminant Analysis
+qda.fit=qda(Direction~Lag1+Lag2, data=Smarket.0104)
+qda.pred=predict(qda.fit,Smarket.2005)
+qda.class=qda.pred$class
+head(qda.class)
+table(qda.class,Direction.2005)
+mean(qda.class==Direction.2005)
+```
+
+```{r}
+# K-Nearest Neighbors
+library(class)
+train.X=cbind(Lag1, Lag2)[train,]
+head(train.X)
+test.X=cbind(Lag1, Lag2)[!train,]
+train.Direction=Direction[train]
+set.seed(1)
+knn.pred=knn(train.X,test.X,train.Direction,k=5)
+head(knn.pred)
+table(knn.pred,Direction.2005)
+mean(knn.pred==Direction.2005)
+knn.pred=knn(train.X,test.X,train.Direction,k=100)
+mean(knn.pred==Direction.2005)
+knn.pred=knn(train.X,test.X,train.Direction,k=1)
+mean(knn.pred==Direction.2005)
+```
+
+An Application to Caravan Insurance Data
+
+```{r}
+# View the data
+dim(Caravan)
+attach(Caravan)
+summary(Purchase)
+standardized.X= scale(Caravan[,-86])
+test=1:1000
+train.X= standardized.X[-test,]
+test.X= standardized.X[test,]
+train.Y=Purchase [-test]
+test.Y=Purchase [test]
+```
+
+```{r}
+# K-Nearest Neighbors
+set.seed(1)
+knn.pred=knn(train.X,test.X,train.Y,k=1)
+mean(test.Y!=knn.pred)
+mean(test.Y!="No")
+table(knn.pred,test.Y)
+knn.pred=knn(train.X,test.X,train.Y,k=3)
+table(knn.pred,test.Y)
+knn.pred=knn(train.X,test.X,train.Y,k=5)
+table(knn.pred,test.Y)
+```
+
+```{r}
+# Logistic Regression
+glm.fits=glm(Purchase~.,data=Caravan,family=binomial,subset=-test)
+glm.probs=predict(glm.fits,Caravan[test,],type="response")
+glm.pred = rep ("No", 1000)
+glm.pred[glm.probs > .5]="Yes"
+table(glm.pred,test.Y)
+glm.pred=rep("No",1000)
+glm.pred[glm.probs >.25]=" Yes"
+table(glm.pred,test.Y)
+```
+
