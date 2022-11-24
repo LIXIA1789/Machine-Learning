@@ -1,0 +1,509 @@
+---
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+---
+---
+title: "Analysis of factors affecting the selling price of IKEA furnitures"
+author: "Changlong Wan, Lixia Li, Nadsupa Chanachu, Ruiqi Huang & Shuhan Wang"
+
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, comment = NA, message = FALSE, warning = FALSE)
+```
+
+```{r packages}
+library(kableExtra)
+library(gridExtra)
+library(tinytex)
+library(equatiomatic)
+library(gapminder)
+library(ggplot2)
+library(dplyr)
+library(moderndive)
+library(skimr)
+library(plotly)
+library(tidyr)
+library(jtools)
+library(janitor)
+library(infer)
+library(broom)
+library(sjPlot)
+library(stats)
+```
+
+```{r}
+#read the data
+setwd("C:/Users/86189/Documents")
+IKEA<-read.csv("dataset15.csv")
+# select variables
+IKEA<-IKEA %>%
+  select(category,price,sellable_online,other_colors,depth,height,width)
+#remove NA data
+IKEA<-na.omit(IKEA)
+# handling factor variables
+IKEA$category<-as.factor(IKEA$category)
+IKEA$sellable_online<-as.factor(IKEA$sellable_online)
+IKEA$other_colors<-as.factor(IKEA$other_colors)
+IKEA$price[IKEA$price<1000]<-"p<1000"
+IKEA$price[IKEA$price!="p<1000"]<-"p>=1000"
+IKEA$price<-as.factor(IKEA$price)
+```
+
+# Introduction 
+
+With the development of economy, people are more and more seeking to improve the quality of life. As an indispensable part of people's lives, furniture has also received more attention. This article will use data from IKEA Saudi Arabia to find out what factors influence the price of furniture over SAR 1000.
+
+First, we'll use a generalized linear model (GLM) to separately analyze six factors that may affect prices: category , sellable_online , other_colors , depth , height , and width , and observe potential relationships between explanatory and response variables. Next, we fit all the explanatory variables through a multivariate generalized linear model to help us choose appropriate variables. Finally, we remove inappropriate explanatory variables and fit the remaining explanatory variables and draw conclusions.
+
+# Data Description
+
+## Category
+
+This table indicate the number of each type of furniture.
+```{r}
+IKEA%>%
+  group_by(category)%>%
+  summarize(count=n())%>%
+  kable(caption = '\\label{tab:category} Data Summary of category')%>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box1} Barplot of price by category.", fig.pos = "H"}  
+ggplot(data=IKEA,aes(x = price, group = category))+
+  geom_bar(aes(y = ..prop..,fill = category), stat = "count", position = "dodge")+
+  labs(x="price",y="proportion of category",title = "Barplot of price by category")+
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+## Sellable_online
+
+```{r}
+IKEA %>% 
+  tabyl(sellable_online, price) %>% 
+  adorn_percentages() %>% 
+  adorn_pct_formatting() %>% 
+  adorn_ns() %>%
+  kable(caption = '\\label{tab:Sellable_online} Data Summary of Sellableonline') %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box2} Barplot of price by sellableonline.", fig.pos = "H"}
+ggplot(data=IKEA,aes(x = price, group = sellable_online))+
+  geom_bar(aes(y = ..prop..,fill = sellable_online), stat = "count", position = "dodge")+
+  labs(x="price",y="Proportion", title = "Barplot of price by sellable_online.")
+```
+
+We can see that none of the furniture that is not available for online sale has a price above SAR 1000 (100% vs 0%). And of the furniture offered for sale online, more furniture is below SAR 1,000 (59% vs 41%).
+
+## Other_colors
+
+```{r}
+#summarize the data in a table format
+IKEA %>% 
+  tabyl(other_colors, price) %>% 
+  adorn_percentages() %>% 
+  adorn_pct_formatting() %>% 
+  adorn_ns() %>%
+  kable(caption = '\\label{tab:Other_colors} Data Summary of Othercolors') %>%
+  kable_styling(font_size = 10, latex_options = "hold_position")
+```
+
+
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box3} Barplot of price by Othercolors.", fig.pos = "H"}
+#visualize the distribution using a bar plot
+ggplot(data=IKEA,aes(x = price, group = other_colors))+
+  geom_bar(aes(y = ..prop..,fill = other_colors), stat = "count", position = "dodge")+
+  labs(x="price",y="Proportion", title = "Barplot of price by Other_colors.")
+```
+
+We can see that in furniture with other colors (58.2% vs 41.8%) and furniture without other colors (71.7% vs 28.3%), the proportion of furniture priced below SAR 1000 is higher. 
+
+## Depth 
+
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box4} Box Plot of Depth by price.", fig.pos = "H"}
+ggplot(data = IKEA,aes(x = price, y = depth, fill = price))+
+  geom_boxplot()+
+  labs(x="price",y="depth", title = "Box Plot of Depth by price.")
+```
+
+## Height
+
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box5} Box Plot of Height by price.", fig.pos = "H"}
+ggplot(data = IKEA, aes(x = price, y = height, fill = price)) +
+  geom_boxplot() +
+  labs(x = "price", y = "height", title = "Box Plot of Height by price.")
+```
+
+Here we can see that the high price group (p>=1000) tend to be more height than that of low price group (p<1000). 
+
+## Width
+
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box6} Box Plot of Width by price.", fig.pos = "H"}
+#visualize the distribution using a bar plot
+ggplot(data = IKEA,aes(x = price, y = width, fill = price))+
+  geom_boxplot()+
+  labs(x="price",y="width", title = "Box Plot of Width by price.")
+```
+
+Here we can see that furniture priced over SAR 1000 tends to be wider than furniture priced under SAR 1000.
+
+## Data summary
+
+```{r summaries_skim}
+my_skim <- skim_with(base = sfl(n = length))
+IKEA %>%
+  select(depth,height,width) %>%
+  my_skim() %>%
+#transmute() is similar as mutate().
+  transmute(Variable=skim_variable, n=n, Mean=numeric.mean, SD=numeric.sd,
+            Min=numeric.p0, Median=numeric.p50,  Max=numeric.p100, 
+            IQR = numeric.p75-numeric.p50) %>%
+   kable(caption = '\\label{tab:summaryskim} Summary statistics of interested variables',
+         booktabs = TRUE, linesep = "", digits = 2) %>%
+  #linesep="" turns off the default 5 rows + a space setting.  
+   kable_styling(font_size = 10, latex_options = "hold_position")
+```
+
+# Exploratory Analysis
+
+## Category
+
+Logistic regression model:
+```{r}
+model.category<-glm(price ~ category, data = IKEA, family = binomial(link = "logit"))
+equatiomatic::extract_eq(model.category)
+model.category %>%
+               summary() %>%
+               coef()%>%
+               kable(caption = 'Estimates of the parameters from the model.category') %>%
+               kable_styling(latex_options = 'HOLD_position', )
+```
+From the above results, the p-values of each factor in category are too large, thus we can conclude that variable category have no  impact on price.
+
+## Sellable_online
+
+The logistic regression model is given by:
+```{r}
+model.sellable <- glm(price ~ sellable_online , data = IKEA, family = binomial(link = "logit"))
+equatiomatic::extract_eq(model.sellable,use_coefs = TRUE)
+```
+
+Hence, the log-odds of the price being high increase by 15.2. if they are in the true sellable online group. This provides us with a point estimate of how the log-odds changes with sellable_online.
+
+Fitting the model yields the result:
+```{r}
+mod.sellable.coef.logodds <- model.sellable %>%
+                            summary() %>%
+                            coef()
+mod.sellable.coef.logodds %>%
+  kable(caption = '\\label{tab:mod.sellable} Estimates of the parameters from the mod.sellable') %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+From the above results, the p-value is larger than 0.05, thus we can conclude that variable sellable_online doesn't have the impact on price.
+
+95% confidence interval:
+```{r}
+sellable.logodds.lower <- mod.sellable.coef.logodds["sellable_onlineTRUE", "Estimate"] - 
+                        1.96 * mod.sellable.coef.logodds["sellable_onlineTRUE", "Std. Error"]
+sellable.logodds.lower
+```
+
+```{r}
+sellable.logodds.upper <- mod.sellable.coef.logodds["sellable_onlineTRUE", "Estimate"] + 
+                        1.96 * mod.sellable.coef.logodds["sellable_onlineTRUE", "Std. Error"]
+sellable.logodds.upper
+```
+
+Hence the point estimate for the log-odds is 15.2, which has a corresponding 95% confidence interval of (-1631.737, 1662.138). The confidence interval for the parameters in this model contains zero, implying that there is no evidence of a linear relationship between the response variable and the explanatory variable.
+
+This can be displayed graphically:
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box7} The log-odds for the price of furniture  over 1000 SAR by sellable online(TRUE).", fig.pos = "H"}
+plot_model(model.sellable, show.values = TRUE, transform = NULL,
+           title = "Log-Odds (P>1000)", show.p = FALSE)
+```
+
+
+## Other_colors
+
+The logistic regression model is given by:
+
+```{r}
+## price ~ other_colors ##
+model.other_colors <- glm(price ~ other_colors, data = IKEA, family = binomial(link = "logit"))
+equatiomatic::extract_eq(model.other_colors)
+#This function can automatically transform the model to mathematical equation
+```
+
+Fitting the model yields the result:
+
+```{r}
+# model output
+model.other_colors.coef.logodds <- model.other_colors %>%
+                            summary() %>%
+                            coef()
+model.other_colors.coef.logodds %>%
+  kable(caption = '\\label{tab:model.other_colors} Estimates of the parameters from the model.othercolors') %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+So, the best-fitting line is given as:
+
+```{r}
+equatiomatic::extract_eq(model.other_colors,use_coefs = TRUE)
+```
+
+Hence, if the furniture is available in other color options, the log odds of its price over 1000 SAR increase by 0.94.
+
+```{r}
+# confidence interval
+confint(model.other_colors) %>%
+   kable(caption = '\\label{tab:cicolor} Confidence interval of the point estimate in model.othercolors') %>%
+  kable_styling(font_size = 10, latex_options = "hold_position")
+```
+
+Hence the point estimate for the log-odds is 0.94, which has a corresponding 95% confidence interval of (0.42, 1.46). 
+
+This can be displayed graphically:
+
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box8} The log-odds for the price of furniture  over 1000 SAR by other colors(Yes).", fig.pos = "H"}
+#Log odds graph
+plot_model(model.other_colors, show.values = TRUE, transform = NULL,
+           title = "Log-Odds (P>1000)", show.p = FALSE)
+```
+
+## Depth 
+
+Logistic regression model:
+```{r}
+model.depth<-glm(price ~ depth, data = IKEA, family = binomial(link = "logit"))
+equatiomatic::extract_eq(model.depth)
+```
+
+Fitting the model yields the result:
+```{r}
+model.depth.coef.logodds <- model.depth %>%
+                            summary() %>%
+                            coef()
+model.depth.coef.logodds %>%
+  kable(caption = '\\label{tab:mod.height} Estimates of the parameters from the model.depth') %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+So, the best-fitting line is given as:
+
+```{r}
+equatiomatic::extract_eq(model.depth,use_coefs = TRUE)
+```
+
+From the above results, the p-value is smaller than 0.05, thus we can conclude that variable depth have impact on price.
+And with depth increases one unit, the log-odds of price(p>1000) will increase 0.03.
+
+95% confidence interval:
+```{r}
+confint(model.depth)%>%
+  kable(caption = '\\label{tab:ciDepth} Confidence interval of the point estimate in model.Depth') %>%
+  kable_styling(font_size = 10, latex_options = "hold_position")
+```
+
+The confidence interval for depth variable is (0.02,0.04) that is not contain zerothat there is evidence of a linear relationship between the response variable and the explanatory variable. Therefore we should contain the depth in the future model.
+This can be displayed graphically:
+
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box9} The log-odds of depth for the price of furniture  over 1000 SAR.", fig.pos = "H"}
+plot_model(model.depth, show.values = TRUE, transform = NULL,
+           title = "Log-Odds (P>1000)", show.p = FALSE)
+```
+
+
+## Height
+
+The logistic regression model is given by:
+```{r}
+model.height <- glm(price ~ height, data = IKEA, family = binomial(link = "logit"))
+equatiomatic::extract_eq(model.height)
+```
+
+Fitting the model yields the result:
+```{r}
+mod.height.coef.logodds <- model.height %>%
+                            summary() %>%
+                            coef()
+mod.height.coef.logodds %>%
+  kable(caption = '\\label{tab:mod.height} Estimates of the parameters from the mod.height') %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+So, the best-fitting line is given as:
+```{r}
+model.height <- glm(price ~ height, data = IKEA, family = binomial(link = "logit"))
+equatiomatic::extract_eq(model.height,use_coefs = TRUE)
+```
+
+From the above results, the p-value is smaller than 0.05, thus we can conclude that variable height  have the impact on price. The log-odds of the group being high price (p>=1000) increase by 0.01 for every one unit increase in height. This provides us with a point estimate of how the log-odds changes with height.
+
+
+95% confidence interval:
+```{r}
+confint(model.height) %>%
+  kable(caption = '\\label{tab:ciHeight} Confidence interval of the point estimate in model.Height') %>%
+  kable_styling(font_size = 10, latex_options = "hold_position")
+```
+
+Hence the point estimate for the log-odds is 0.01, which has a corresponding 95% confidence interval of (0.0065853,0.0155878). The confidence interval for the parameters in this model does not contains zero, implying that there is evidence of a linear relationship between the response variable and the explanatory variable. Therefore we should contain the height in the future model.  
+
+This can be displayed graphically:
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box10} The log-odds of height for the price of furniture  over 1000 SAR.", fig.pos = "H"}
+plot_model(model.height, show.values = TRUE, transform = NULL,
+           title = "Log-Odds (P>1000)", show.p = FALSE)
+```
+
+
+## Width
+
+The logistic regression model is given by:
+
+```{r}
+## price ~ width ##
+model.width <- glm(price ~ width, data = IKEA, family = binomial(link = "logit"))
+equatiomatic::extract_eq(model.width)
+#This function can automatically transform the model to mathematical equation
+```
+
+Fitting the model yields the result:
+
+```{r}
+# model output
+model.width.coef.logodds <- model.width %>%
+                            summary() %>%
+                            coef()
+model.width.coef.logodds %>%
+  kable(caption = '\\label{tab:model.width} Estimates of the parameters from the model.width') %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+So, the best-fitting line is given as:
+
+```{r}
+equatiomatic::extract_eq(model.width,use_coefs = TRUE)
+```
+
+Therefore, for each additional unit of width, the log odds of furniture being more than SAR 1000 increase by 0.02.
+
+This provides us with a point estimate of how the log-odds changes with age, however, we are also interested in producing a 95% confidence interval for these log-odds.
+
+```{r}
+# confidence interval
+confint(model.width) %>%
+  kable(caption = '\\label{tab:ciWidth} Confidence interval of the point estimate in model.Width') %>%
+  kable_styling(font_size = 10, latex_options = "hold_position")
+```
+
+We found a significant correlation between width and price. And the confidence interval of the point estimate in model.Width (0.014, 0.022). 
+
+This can be displayed graphically:
+
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box11} The log-odds of width for the price of furniture  over 1000 SAR.", fig.pos = "H"}
+# Log odds graph
+plot_model(model.width, show.values = TRUE, transform = NULL,
+           title = "Log-Odds (P>1000)", show.p = FALSE)
+```
+
+# Formal data analysis
+
+## Multivariate Generalized Linear Models
+
+Next, we built a multivariate generalized linear model for all explanatory variables. We hope to use it to confirm our  variable selection. The model fitting results drop:
+
+```{r}
+## price ~ category + sellable_online + other_colors + depth + height + width ##
+model.1 <- glm(price ~ category + sellable_online + other_colors + depth + height + width, data = IKEA, family = binomial(link = "logit"))
+```
+
+```{r}
+# model output
+model.1.coef.logodds <- model.1 %>%
+                            summary() %>%
+                            coef()
+model.1.coef.logodds %>%
+  kable(caption = '\\label{tab:model.1} Estimates of the parameters from the multivariate model.1') %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+```{r}
+# confidence interval
+confint(model.1) %>%
+  kable(caption = '\\label{tab:ciWidth} Confidence interval of the point estimate in multivariate model.1') %>%
+  kable_styling(font_size = 10, latex_options = "hold_position")
+```
+
+We found that only two explanatory variables, height and width, were significant and their confidence intervals did not include 0. Therefore, we decided to use these two variables and fit the multivariate model again. The model is as follows:
+
+```{r}
+## price ~ height + width ##
+model.2 <- glm(price ~ height + width, data = IKEA, family = binomial(link = "logit"))
+equatiomatic::extract_eq(model.2)
+#This function can automatically transform the model to mathematical equation
+```
+
+Fitting the model yields the result:
+
+```{r}
+# model output
+model.2.coef.logodds <- model.2 %>%
+                            summary() %>%
+                            coef()
+model.2.coef.logodds %>%
+  kable(caption = '\\label{tab:model.2} Estimates of the parameters from the multivariate model.2') %>%
+  kable_styling(latex_options = 'HOLD_position', )
+```
+
+Hence, the best-fitting line is given as:
+
+```{r}
+equatiomatic::extract_eq(model.2,use_coefs = TRUE)
+```
+
+We see that the coefficients for both height and width are positive, indicating that furniture with greater height and width is more likely to sell for more than SAR 1,000.
+
+This provides us with a point estimate of how the log-odds changes with age, however, we are also interested in producing a 95% confidence interval for these log-odds.
+
+```{r}
+# 95% confidence interval
+confint(model.2) %>%
+  kable(caption = '\\label{tab:cimult} Confidence interval of the point estimate in multivariate log.model.2') %>%
+  kable_styling(font_size = 10, latex_options = "hold_position")
+```
+
+For ease of interpretation, we indexed the results.
+
+```{r}
+# 95% confidence interval
+exp(confint(model.2) ) %>%
+  kable(caption = '\\label{tab:multivariate} Confidence interval of the point estimate in multivariate model.2') %>%
+  kable_styling(font_size = 10, latex_options = "hold_position")
+```
+
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:box12} The odds of the price of furniture  over 1000 SAR.", fig.pos = "H"}
+# odds graph
+plot_model(model.2, show.values = TRUE, 
+           title = "Odds (P>1000)", show.p = FALSE, value.offset = 0.25)
+```
+
+
+# Conclusion
+
+We found that, among the six explanatory variables, only width and height have an effect on whether the furniture price exceeds 1000 Saudi Riyal and category, sellable_online, other_colors and depth have no significant effect on it. With each unit increase in the height and width of furniture, the chance that they will cost more than 1000 Saudi riyals increases (by a factor of 1.01 and 1.03).
+
+# Future Work
+
+Small data size may lead to model inaccuracies.
+
+Explore the better way to deal with the missing data, for example, using mean value to replace them instead of removing all “NA” value directly to prevent an insufficient amount of data.
+
+Furniture categories are too many, which may affect the significance of coefficients.
+
+Apply clustering such as k-means to find the impact of the category of furniture on the price variable that improve the results of the model.
+
+
